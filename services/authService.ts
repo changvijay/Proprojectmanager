@@ -1,19 +1,14 @@
 
 import { LoginResponse, User } from '../types';
-import { mockDb } from './mockDb';
+import { dbService } from './dbService';
 
 export const authService = {
   login: async (username: string, password: string): Promise<LoginResponse> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    if (password !== '_Vijay@2725') {
-      throw new Error('Invalid credentials');
-    }
-
-    const user = mockDb.getUserByUsername(username);
+    // Verify credentials against the database
+    const user = await dbService.verifyUser(username, password);
+    
     if (!user) {
-      throw new Error('User not found');
+      throw new Error('Invalid credentials');
     }
 
     // Generate a fake JWT
@@ -33,11 +28,13 @@ export const authService = {
     localStorage.removeItem('user');
   },
 
-  getUserFromToken: (token: string): User | null => {
+  getUserFromToken: async (token: string): Promise<User | null> => {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
-      const users = mockDb.getUsers();
-      return users.find(u => u.id === payload.id) || null;
+      if (Date.now() > payload.exp) return null; // Expired
+      
+      const user = await dbService.getUserById(payload.id);
+      return user || null;
     } catch (e) {
       return null;
     }

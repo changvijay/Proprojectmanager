@@ -20,19 +20,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
 
-    if (token && storedUser) {
-      // Verify token validity (mock)
-      const user = authService.getUserFromToken(token);
-      if (user) {
-        setState({ user, token, isAuthenticated: true });
-      } else {
-        authService.logout();
+      if (token) {
+        // Verify token and fetch fresh user data
+        const user = await authService.getUserFromToken(token);
+        if (user) {
+          setState({ user, token, isAuthenticated: true });
+        } else {
+          authService.logout();
+        }
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   const login = async (username: string, password: string) => {

@@ -1,6 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY;
+// Helper to access env vars safely
+const getEnvVar = (key: string) => {
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key];
+  }
+  return '';
+};
+
+const apiKey = getEnvVar('API_KEY');
 
 export const geminiService = {
   generateProjectPlan: async (projectName: string, description: string) => {

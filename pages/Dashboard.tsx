@@ -1,18 +1,37 @@
 
-import React, { useMemo } from 'react';
-import { mockDb } from '../services/mockDb';
+import React, { useMemo, useEffect, useState } from 'react';
+import { dbService } from '../services/dbService';
 import { useAuth } from '../context/AuthContext';
-import { TaskStatus, UserRole } from '../types';
+import { TaskStatus, UserRole, Project, Task } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { ClipboardList, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { ClipboardList, CheckCircle2, AlertCircle, Clock, Loader2 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const projects = mockDb.getProjects();
-  const tasks = mockDb.getTasks();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [pData, tData] = await Promise.all([
+          dbService.getProjects(),
+          dbService.getTasks()
+        ]);
+        setProjects(pData);
+        setTasks(tData);
+      } catch (e) {
+        console.error("Failed to load dashboard data", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   // Personal tasks for non-admin/PM
   const myTasks = useMemo(() => {
@@ -29,7 +48,9 @@ export const Dashboard: React.FC = () => {
       [TaskStatus.REVIEW]: 0,
       [TaskStatus.DONE]: 0
     };
-    tasks.forEach(t => counts[t.status]++);
+    tasks.forEach(t => {
+      if (counts[t.status] !== undefined) counts[t.status]++;
+    });
     return counts;
   }, [tasks]);
 
@@ -64,6 +85,10 @@ export const Dashboard: React.FC = () => {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return <div className="h-96 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500"/></div>;
+  }
 
   return (
     <div className="space-y-6">

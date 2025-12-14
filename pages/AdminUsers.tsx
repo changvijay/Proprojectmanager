@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { mockDb } from '../services/mockDb';
+import { dbService } from '../services/dbService';
 import { User, UserRole, TaskStatus, Project, Task, TaskPriority } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { 
   Trash2, UserPlus, Edit, CheckCircle2, X, Search, Briefcase, 
   CheckSquare, Eye, Layers, Calendar, AlertCircle, Mail, User as UserIcon,
-  ShieldCheck, Code, Terminal
+  ShieldCheck, Code, Terminal, Loader2, Lock
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 
@@ -23,8 +23,29 @@ interface UserDetailsModalProps {
 }
 
 const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose }) => {
-  const projects = mockDb.getProjects();
-  const tasks = mockDb.getTasks();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [p, t] = await Promise.all([
+          dbService.getProjects(),
+          dbService.getTasks()
+        ]);
+        setProjects(p);
+        setTasks(t);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (isLoading) return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50"><Loader2 className="animate-spin text-white h-8 w-8"/></div>;
 
   // Get projects user is involved in (as manager or team member)
   const userProjects = projects.filter(p => 
@@ -257,6 +278,7 @@ export const AdminUsers: React.FC = () => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   
   // Form State
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -264,29 +286,38 @@ export const AdminUsers: React.FC = () => {
     name: '',
     username: '',
     email: '',
-    role: UserRole.DEVELOPER
+    role: UserRole.DEVELOPER,
+    password: ''
   });
+
+  const loadData = async () => {
+    try {
+      const [allUsers, allTasks] = await Promise.all([
+        dbService.getUsers(),
+        dbService.getTasks()
+      ]);
+
+      const usersWithStats = allUsers.map(u => {
+        const userTasks = allTasks.filter(t => t.assigneeIds?.includes(u.id));
+        const completed = userTasks.filter(t => t.status === TaskStatus.DONE).length;
+        return {
+          ...u,
+          tasksAssigned: userTasks.length,
+          tasksCompleted: completed,
+          pendingCount: userTasks.length - completed
+        };
+      });
+      setUsers(usersWithStats);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
   }, []);
-
-  const loadData = () => {
-    const allUsers = mockDb.getUsers();
-    const allTasks = mockDb.getTasks();
-
-    const usersWithStats = allUsers.map(u => {
-      const userTasks = allTasks.filter(t => t.assigneeIds?.includes(u.id));
-      const completed = userTasks.filter(t => t.status === TaskStatus.DONE).length;
-      return {
-        ...u,
-        tasksAssigned: userTasks.length,
-        tasksCompleted: completed,
-        pendingCount: userTasks.length - completed
-      };
-    });
-    setUsers(usersWithStats);
-  };
 
   const canManageUsers = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.PROJECT_MANAGER;
 
@@ -296,7 +327,8 @@ export const AdminUsers: React.FC = () => {
       name: user.name,
       username: user.username,
       email: user.email,
-      role: user.role
+      role: user.role,
+      password: '' // Keep empty for edit unless we implement password reset
     });
     setIsFormModalOpen(true);
   };
@@ -307,37 +339,55 @@ export const AdminUsers: React.FC = () => {
       name: '',
       username: '',
       email: '',
-      role: UserRole.DEVELOPER
+      role: UserRole.DEVELOPER,
+      password: ''
     });
     setIsFormModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      mockDb.deleteUser(id);
-      loadData();
+      try {
+        await dbService.deleteUser(id);
+        loadData();
+      } catch(e) {
+        alert("Failed to delete user");
+      }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (editingUser) {
-      const updatedUser: User = {
-        ...editingUser,
-        ...formData
-      };
-      mockDb.updateUser(updatedUser);
-    } else {
-      const newUser: User = {
-        id: `u${Date.now()}`,
-        ...formData
-      };
-      mockDb.addUser(newUser);
+    try {
+      if (editingUser) {
+        const updatedUser: User = {
+          ...editingUser,
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          role: formData.role
+        };
+        // Note: Password update on edit is not implemented in this flow to keep it simple, 
+        // as the requirement was specifically about the creation form.
+        await dbService.updateUser(updatedUser);
+      } else {
+        const newUser: User = {
+          id: crypto.randomUUID(),
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          role: formData.role
+        };
+        await dbService.addUser(newUser, formData.password);
+      }
+      
+      setIsFormModalOpen(false);
+      loadData();
+    } catch(e) {
+      alert("Failed to save user");
+      console.error(e);
     }
-    
-    setIsFormModalOpen(false);
-    loadData();
   };
 
   const getRoleIcon = (role: UserRole) => {
@@ -371,6 +421,8 @@ export const AdminUsers: React.FC = () => {
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (isLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin h-8 w-8 text-blue-500" /></div>;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-10">
@@ -573,6 +625,26 @@ export const AdminUsers: React.FC = () => {
                    />
                 </div>
               </div>
+              
+              {!editingUser && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <div className="relative rounded-md shadow-sm">
+                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <Lock className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                     </div>
+                     <input
+                      required
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      className="block w-full rounded-md border-gray-300 pl-10 focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2 border"
+                      placeholder="Enter password"
+                     />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">System Role</label>
                 <select

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { mockDb } from '../services/mockDb';
+import { dbService } from '../services/dbService';
 import { geminiService } from '../services/geminiService';
 import { Project, UserRole, TaskStatus, TaskPriority } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ export const Projects: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Form State
   const [newProjectName, setNewProjectName] = useState('');
@@ -19,8 +20,19 @@ export const Projects: React.FC = () => {
   const [newProjectStart, setNewProjectStart] = useState('');
   const [newProjectEnd, setNewProjectEnd] = useState('');
 
+  const loadProjects = async () => {
+    try {
+      const data = await dbService.getProjects();
+      setProjects(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setProjects(mockDb.getProjects());
+    loadProjects();
   }, []);
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -28,7 +40,7 @@ export const Projects: React.FC = () => {
     if (!user) return;
 
     const newProject: Project = {
-      id: `p${Date.now()}`,
+      id: crypto.randomUUID(), // Use standard UUIDs
       name: newProjectName,
       description: newProjectDesc,
       status: 'PLANNING',
@@ -39,14 +51,15 @@ export const Projects: React.FC = () => {
       documents: []
     };
 
-    mockDb.addProject(newProject);
-
-    // If user used AI, maybe we want to generate initial tasks?
-    // For now, let's just add the project.
-    
-    setProjects(mockDb.getProjects());
-    setIsModalOpen(false);
-    resetForm();
+    try {
+      await dbService.addProject(newProject);
+      await loadProjects();
+      setIsModalOpen(false);
+      resetForm();
+    } catch (e) {
+      console.error("Failed to create project", e);
+      alert("Error creating project");
+    }
   };
 
   const handleAiGenerate = async () => {
@@ -56,14 +69,13 @@ export const Projects: React.FC = () => {
     try {
       const result = await geminiService.generateProjectPlan(newProjectName, newProjectDesc);
       
-      // We will auto-create the project AND the tasks
       if (!user) return;
       
-      const projectId = `p${Date.now()}`;
+      const projectId = crypto.randomUUID();
       const newProject: Project = {
         id: projectId,
         name: newProjectName,
-        description: newProjectDesc, // The original description
+        description: newProjectDesc, 
         status: 'PLANNING',
         startDate: newProjectStart || new Date().toISOString().split('T')[0],
         endDate: newProjectEnd || new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
@@ -72,13 +84,13 @@ export const Projects: React.FC = () => {
         documents: []
       };
 
-      mockDb.addProject(newProject);
+      await dbService.addProject(newProject);
 
       // Add generated tasks
       if (result && result.tasks) {
-        result.tasks.forEach((t: any, index: number) => {
-          mockDb.addTask({
-            id: `t${Date.now()}-${index}`,
+        const taskPromises = result.tasks.map((t: any) => {
+          return dbService.addTask({
+            id: crypto.randomUUID(),
             projectId: projectId,
             title: t.title,
             description: t.description,
@@ -89,9 +101,10 @@ export const Projects: React.FC = () => {
             documents: []
           });
         });
+        await Promise.all(taskPromises);
       }
 
-      setProjects(mockDb.getProjects());
+      await loadProjects();
       setIsModalOpen(false);
       resetForm();
       alert('Project created with AI-generated tasks!');
@@ -113,6 +126,10 @@ export const Projects: React.FC = () => {
 
   const canCreate = user?.role === UserRole.ADMIN || user?.role === UserRole.PROJECT_MANAGER;
 
+  if (isLoading) {
+    return <div className="h-64 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -132,7 +149,9 @@ export const Projects: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {projects.map(project => (
+        {projects.length === 0 ? (
+          <p className="col-span-3 text-center py-10 text-gray-500">No projects found. Create one to get started.</p>
+        ) : projects.map(project => (
           <Link to={`/projects/${project.id}`} key={project.id} className="block group">
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow p-6 h-full flex flex-col">
               <div className="flex justify-between items-start mb-4">
@@ -150,11 +169,11 @@ export const Projects: React.FC = () => {
               <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
                 <div className="flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
-                  <span>{new Date(project.startDate).toLocaleDateString()}</span>
+                  <span>{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'N/A'}</span>
                 </div>
                 <div className="flex items-center">
                   <Users className="h-4 w-4 mr-1" />
-                  <span>{project.teamIds.length} members</span>
+                  <span>{project.teamIds?.length || 0} members</span>
                 </div>
               </div>
             </div>
@@ -218,6 +237,7 @@ export const Projects: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCreateProject}
+                disabled={isGenerating}
                 className="inline-flex justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border-gray-300 shadow-sm"
               >
                 Create Manually
@@ -238,4 +258,3 @@ export const Projects: React.FC = () => {
     </div>
   );
 };
-    

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { mockDb } from '../services/mockDb';
+import { dbService } from '../services/dbService';
 import { Task, TaskStatus, Project, User, ProjectDocument, DocumentType, TaskPriority, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -186,12 +186,12 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ projectId, users, onC
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
     const newTask: Task = {
-      id: `t${Date.now()}`,
+      id: crypto.randomUUID(),
       projectId,
       title,
       description: desc,
@@ -203,9 +203,14 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ projectId, users, onC
       documents: []
     };
 
-    mockDb.addTask(newTask);
-    onCreated();
-    onClose();
+    try {
+      await dbService.addTask(newTask);
+      onCreated();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create task");
+    }
   };
 
   return (
@@ -303,25 +308,32 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setEditedTask(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = () => {
-    mockDb.updateTask(editedTask);
-    onUpdate();
-    onClose();
+  const handleSave = async () => {
+    try {
+      await dbService.updateTask(editedTask);
+      onUpdate();
+      onClose();
+    } catch(e) {
+      alert("Failed to save task");
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this task?')) {
-      mockDb.deleteTask(task.id);
+      await dbService.deleteTask(task.id);
       onUpdate();
       onClose();
     }
   };
 
   // Task Document Logic
-  const handleTaskDocUpload = (e: React.ChangeEvent<HTMLInputElement>, type: DocumentType) => {
+  const handleTaskDocUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: DocumentType) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // In a real app, upload to storage bucket here.
+    // For now, we use local blob, which wont persist well across refresh for other users, 
+    // but demonstrating the logic.
     const url = URL.createObjectURL(file);
     const newDoc: ProjectDocument = {
       id: `tdoc${Date.now()}`,
@@ -334,21 +346,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     };
 
     const updatedDocs = [newDoc, ...(editedTask.documents || [])];
-    setEditedTask(prev => ({ ...prev, documents: updatedDocs }));
+    const taskWithDocs = { ...editedTask, documents: updatedDocs };
+    setEditedTask(taskWithDocs);
     
-    // Also update DB immediately to save file state without clicking "Save Changes" for the whole task
-    const tempTask = { ...editedTask, documents: updatedDocs };
-    mockDb.updateTask(tempTask);
-    
+    // Auto-save just for docs? Or wait for main save?
+    // Let's auto save for consistency with original.
+    await dbService.updateTask(taskWithDocs);
+    onUpdate(); // to update parent view data
     e.target.value = '';
   };
 
-  const handleTaskDocDelete = (docId: string) => {
+  const handleTaskDocDelete = async (docId: string) => {
     if (window.confirm('Remove this document from task?')) {
        const updatedDocs = editedTask.documents.filter(d => d.id !== docId);
-       setEditedTask(prev => ({ ...prev, documents: updatedDocs }));
-       const tempTask = { ...editedTask, documents: updatedDocs };
-       mockDb.updateTask(tempTask);
+       const taskWithDocs = { ...editedTask, documents: updatedDocs };
+       setEditedTask(taskWithDocs);
+       await dbService.updateTask(taskWithDocs);
+       onUpdate();
     }
   };
 
@@ -666,7 +680,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ project, onUpdate }) => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !uploadType) return;
 
@@ -682,16 +696,20 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ project, onUpdate }) => {
       url: url
     };
 
-    mockDb.addDocument(project.id, newDoc);
-    onUpdate();
+    try {
+      await dbService.addDocumentToProject(project.id, newDoc);
+      onUpdate();
+    } catch(e) {
+      alert("Failed to upload");
+    }
     
     e.target.value = '';
     setUploadType(null);
   };
 
-  const handleDelete = (docId: string) => {
+  const handleDelete = async (docId: string) => {
     if (window.confirm('Delete this document?')) {
-      mockDb.removeDocument(project.id, docId);
+      await dbService.removeDocumentFromProject(project.id, docId);
       onUpdate();
     }
   };
@@ -851,19 +869,28 @@ export const KanbanBoard: React.FC = () => {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     if (!projectId) return;
-    const p = mockDb.getProjectById(projectId);
-    if (p) {
-      setProject({ ...p });
-      setTasks(mockDb.getTasksByProject(projectId));
-      setUsers(mockDb.getUsers());
+    try {
+      const p = await dbService.getProjectById(projectId);
+      if (p) {
+        setProject({ ...p });
+        const [t, u] = await Promise.all([
+          dbService.getTasksByProject(projectId),
+          dbService.getUsers()
+        ]);
+        setTasks(t);
+        setUsers(u);
+      }
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
-    setIsLoading(false);
   }, [projectId]);
 
   // PERMISSION CHECK: Only Assignees, PM, TL, or Admin can move/edit status
@@ -888,7 +915,7 @@ export const KanbanBoard: React.FC = () => {
     user.role === UserRole.PROJECT_MANAGER
   );
 
-  const handleStatusChange = (taskId: string, newStatus: TaskStatus) => {
+  const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
     const taskToUpdate = tasks.find(t => t.id === taskId);
     if (!taskToUpdate) return;
 
@@ -897,9 +924,18 @@ export const KanbanBoard: React.FC = () => {
     }
 
     if (taskToUpdate && project) {
+      // Optimistic Update
       const updatedTask = { ...taskToUpdate, status: newStatus };
-      mockDb.updateTask(updatedTask);
-      setTasks(mockDb.getTasksByProject(project.id));
+      const previousTasks = [...tasks];
+      setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+
+      try {
+        await dbService.updateTask(updatedTask);
+      } catch(e) {
+        // Revert on failure
+        setTasks(previousTasks);
+        alert("Failed to update status");
+      }
     }
   };
 
@@ -1088,7 +1124,7 @@ export const KanbanBoard: React.FC = () => {
                <div className="flex items-center text-sm text-gray-500 space-x-4">
                   <span>{project.status}</span>
                   <span>•</span>
-                  <span>{new Date(project.startDate).toLocaleDateString()} - {new Date(project.endDate).toLocaleDateString()}</span>
+                  <span>{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'N/A'} - {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'N/A'}</span>
                </div>
              </div>
           </div>
