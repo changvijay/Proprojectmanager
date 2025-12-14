@@ -1,0 +1,5 @@
+{
+  "name": "ProManage AI",
+  "description": "A complete project management system with role-based access control (Admin, PM, Dev, etc.), simulated database, JWT-style authentication, and Gemini AI integration for project planning.",
+  "requestFramePermissions": []
+}
