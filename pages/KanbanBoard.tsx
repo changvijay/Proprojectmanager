@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { dbService } from '../services/dbService';
 import { Task, TaskStatus, Project, User, ProjectDocument, DocumentType, TaskPriority, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { 
   Plus, ArrowLeft, User as UserIcon, FileText, Upload, 
   Download, Trash2, Layout, FileSpreadsheet, Calendar, X, CheckCircle2, Eye, Lock, ShieldCheck,
@@ -180,6 +181,7 @@ interface CreateTaskModalProps {
 
 const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ projectId, users, onClose, onCreated }) => {
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
@@ -205,11 +207,12 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ projectId, users, onC
 
     try {
       await dbService.addTask(newTask);
+      addNotification("Task created successfully", "success");
       onCreated();
       onClose();
     } catch (err) {
       console.error(err);
-      alert("Failed to create task");
+      addNotification("Failed to create task", "error");
     }
   };
 
@@ -300,6 +303,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   task, users, canEditStatus, canAssign, canEditDetails, onClose, onUpdate 
 }) => {
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const [activeTab, setActiveTab] = useState<'details' | 'documents'>('details');
   const [editedTask, setEditedTask] = useState<Task>({ ...task });
   const [previewDoc, setPreviewDoc] = useState<ProjectDocument | null>(null);
@@ -311,16 +315,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const handleSave = async () => {
     try {
       await dbService.updateTask(editedTask);
+      addNotification("Task updated", "success");
       onUpdate();
       onClose();
     } catch(e) {
-      alert("Failed to save task");
+      addNotification("Failed to save task", "error");
     }
   };
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this task?')) {
       await dbService.deleteTask(task.id);
+      addNotification("Task deleted", "info");
       onUpdate();
       onClose();
     }
@@ -332,8 +338,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     if (!file) return;
 
     // In a real app, upload to storage bucket here.
-    // For now, we use local blob, which wont persist well across refresh for other users, 
-    // but demonstrating the logic.
     const url = URL.createObjectURL(file);
     const newDoc: ProjectDocument = {
       id: `tdoc${Date.now()}`,
@@ -349,9 +353,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     const taskWithDocs = { ...editedTask, documents: updatedDocs };
     setEditedTask(taskWithDocs);
     
-    // Auto-save just for docs? Or wait for main save?
-    // Let's auto save for consistency with original.
     await dbService.updateTask(taskWithDocs);
+    addNotification("Document attached", "success");
     onUpdate(); // to update parent view data
     e.target.value = '';
   };
@@ -362,6 +365,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
        const taskWithDocs = { ...editedTask, documents: updatedDocs };
        setEditedTask(taskWithDocs);
        await dbService.updateTask(taskWithDocs);
+       addNotification("Document removed", "info");
        onUpdate();
     }
   };
@@ -653,6 +657,7 @@ interface DocumentsTabProps {
 
 const DocumentsTab: React.FC<DocumentsTabProps> = ({ project, onUpdate }) => {
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState<DocumentType | null>(null);
   const [previewDoc, setPreviewDoc] = useState<ProjectDocument | null>(null);
@@ -698,9 +703,10 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ project, onUpdate }) => {
 
     try {
       await dbService.addDocumentToProject(project.id, newDoc);
+      addNotification("Document uploaded successfully", "success");
       onUpdate();
     } catch(e) {
-      alert("Failed to upload");
+      addNotification("Failed to upload document", "error");
     }
     
     e.target.value = '';
@@ -710,6 +716,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ project, onUpdate }) => {
   const handleDelete = async (docId: string) => {
     if (window.confirm('Delete this document?')) {
       await dbService.removeDocumentFromProject(project.id, docId);
+      addNotification("Document deleted", "info");
       onUpdate();
     }
   };
@@ -855,6 +862,7 @@ export const KanbanBoard: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -881,9 +889,12 @@ export const KanbanBoard: React.FC = () => {
         ]);
         setTasks(t);
         setUsers(u);
+      } else {
+        addNotification("Project not found", "error");
       }
     } catch(e) {
       console.error(e);
+      addNotification("Error loading project data", "error");
     } finally {
       setIsLoading(false);
     }
@@ -920,6 +931,7 @@ export const KanbanBoard: React.FC = () => {
     if (!taskToUpdate) return;
 
     if (!isAllowedToMove(taskToUpdate)) {
+      addNotification("You don't have permission to move this task", "warning");
       return;
     }
 
@@ -931,10 +943,11 @@ export const KanbanBoard: React.FC = () => {
 
       try {
         await dbService.updateTask(updatedTask);
+        addNotification(`Task moved to ${newStatus.replace('_', ' ')}`, "success", 2000);
       } catch(e) {
         // Revert on failure
         setTasks(previousTasks);
-        alert("Failed to update status");
+        addNotification("Failed to update status", "error");
       }
     }
   };
@@ -943,7 +956,10 @@ export const KanbanBoard: React.FC = () => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     
-    if (!isAllowedToMove(task)) return;
+    if (!isAllowedToMove(task)) {
+      addNotification("Permission denied", "warning");
+      return;
+    }
 
     const statusOrder = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW, TaskStatus.DONE];
     const currentIndex = statusOrder.indexOf(task.status);

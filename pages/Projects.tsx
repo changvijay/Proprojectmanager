@@ -5,10 +5,12 @@ import { dbService } from '../services/dbService';
 import { geminiService } from '../services/geminiService';
 import { Project, UserRole, TaskStatus, TaskPriority } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { Plus, Calendar, Users, Sparkles, X, Loader2 } from 'lucide-react';
 
 export const Projects: React.FC = () => {
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -26,6 +28,7 @@ export const Projects: React.FC = () => {
       setProjects(data);
     } catch (e) {
       console.error(e);
+      addNotification("Failed to load projects", "error");
     } finally {
       setIsLoading(false);
     }
@@ -56,15 +59,17 @@ export const Projects: React.FC = () => {
       await loadProjects();
       setIsModalOpen(false);
       resetForm();
+      addNotification("Project created successfully", "success");
     } catch (e) {
       console.error("Failed to create project", e);
-      alert("Error creating project");
+      addNotification("Error creating project", "error");
     }
   };
 
   const handleAiGenerate = async () => {
     if (!newProjectName || !newProjectDesc) return;
     setIsGenerating(true);
+    addNotification("AI is generating your project plan...", "info", 3000);
     
     try {
       const result = await geminiService.generateProjectPlan(newProjectName, newProjectDesc);
@@ -107,11 +112,11 @@ export const Projects: React.FC = () => {
       await loadProjects();
       setIsModalOpen(false);
       resetForm();
-      alert('Project created with AI-generated tasks!');
+      addNotification("Project created with AI-generated tasks!", "success");
 
     } catch (e) {
       console.error(e);
-      alert('AI Generation failed, try manually.');
+      addNotification("AI Generation failed, try manually.", "error");
     } finally {
       setIsGenerating(false);
     }

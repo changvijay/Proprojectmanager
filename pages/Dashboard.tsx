@@ -2,6 +2,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { dbService } from '../services/dbService';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { TaskStatus, UserRole, Project, Task } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -11,6 +12,7 @@ import { ClipboardList, CheckCircle2, AlertCircle, Clock, Loader2 } from 'lucide
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,8 +26,34 @@ export const Dashboard: React.FC = () => {
         ]);
         setProjects(pData);
         setTasks(tData);
+
+        // Check for deadlines
+        if (user && user.role !== UserRole.ADMIN) {
+           const myPendingTasks = tData.filter(t => 
+             (t.assigneeIds || []).includes(user.id) && 
+             t.status !== TaskStatus.DONE && 
+             t.dueDate
+           );
+
+           const today = new Date();
+           myPendingTasks.forEach(task => {
+             if (task.dueDate) {
+               const due = new Date(task.dueDate);
+               const diffTime = due.getTime() - today.getTime();
+               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+               
+               if (diffDays <= 2 && diffDays >= 0) {
+                 addNotification(`Task "${task.title}" is due soon (${diffDays === 0 ? 'Today' : 'In ' + diffDays + ' days'})!`, 'warning');
+               } else if (diffDays < 0) {
+                 addNotification(`Task "${task.title}" is overdue!`, 'error');
+               }
+             }
+           });
+        }
+
       } catch (e) {
         console.error("Failed to load dashboard data", e);
+        addNotification("Failed to load dashboard data", 'error');
       } finally {
         setIsLoading(false);
       }

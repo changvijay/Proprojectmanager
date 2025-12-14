@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { dbService } from '../services/dbService';
 import { User, UserRole, TaskStatus, Project, Task, TaskPriority } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { 
   Trash2, UserPlus, Edit, CheckCircle2, X, Search, Briefcase, 
   CheckSquare, Eye, Layers, Calendar, AlertCircle, Mail, User as UserIcon,
@@ -274,6 +275,7 @@ const UserDetailsModal: React.FC<UserDetailsModalProps> = ({ user, onClose }) =>
 // -- Main Component --
 export const AdminUsers: React.FC = () => {
   const { user: currentUser } = useAuth();
+  const { addNotification } = useNotification();
   const [users, setUsers] = useState<UserWithStats[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -310,6 +312,7 @@ export const AdminUsers: React.FC = () => {
       setUsers(usersWithStats);
     } catch(e) {
       console.error(e);
+      addNotification("Failed to load users", "error");
     } finally {
       setIsLoading(false);
     }
@@ -349,9 +352,10 @@ export const AdminUsers: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
         await dbService.deleteUser(id);
+        addNotification("User deleted successfully", "success");
         loadData();
       } catch(e) {
-        alert("Failed to delete user");
+        addNotification("Failed to delete user", "error");
       }
     }
   };
@@ -371,6 +375,7 @@ export const AdminUsers: React.FC = () => {
         // Note: Password update on edit is not implemented in this flow to keep it simple, 
         // as the requirement was specifically about the creation form.
         await dbService.updateUser(updatedUser);
+        addNotification("User updated successfully", "success");
       } else {
         const newUser: User = {
           id: crypto.randomUUID(),
@@ -380,12 +385,13 @@ export const AdminUsers: React.FC = () => {
           role: formData.role
         };
         await dbService.addUser(newUser, formData.password);
+        addNotification("User created successfully", "success");
       }
       
       setIsFormModalOpen(false);
       loadData();
     } catch(e) {
-      alert("Failed to save user");
+      addNotification("Failed to save user", "error");
       console.error(e);
     }
   };
