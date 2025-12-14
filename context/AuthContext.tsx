@@ -1,9 +1,10 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types';
 import { authService } from '../services/authService';
 
 interface AuthContextType extends AuthState {
-  login: (username: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 }
@@ -34,10 +35,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(false);
   }, []);
 
-  const login = async (username: string) => {
+  const login = async (username: string, password: string) => {
     setLoading(true);
     try {
-      const { user, token } = await authService.login(username);
+      const { user, token } = await authService.login(username, password);
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
       setState({ user, token, isAuthenticated: true });

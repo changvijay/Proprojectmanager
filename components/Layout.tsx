@@ -17,10 +17,10 @@ export const Layout: React.FC = () => {
   };
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: [] },
-    { name: 'Projects', href: '/projects', icon: Briefcase, roles: [] },
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: [] as UserRole[] },
+    { name: 'Projects', href: '/projects', icon: Briefcase, roles: [] as UserRole[] },
     // Removed restricted roles for Users to allow everyone to view the directory
-    { name: 'Users', href: '/admin/users', icon: Users, roles: [] },
+    { name: 'Users', href: '/admin/users', icon: Users, roles: [] as UserRole[] },
   ];
 
   const filteredNav = navigation.filter(item => 

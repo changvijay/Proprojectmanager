@@ -1,14 +1,19 @@
+
 import { LoginResponse, User } from '../types';
 import { mockDb } from './mockDb';
 
 export const authService = {
-  login: async (username: string): Promise<LoginResponse> => {
+  login: async (username: string, password: string): Promise<LoginResponse> => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 600));
 
+    if (password !== '_Vijay@2725') {
+      throw new Error('Invalid credentials');
+    }
+
     const user = mockDb.getUserByUsername(username);
     if (!user) {
-      throw new Error('Invalid credentials');
+      throw new Error('User not found');
     }
 
     // Generate a fake JWT

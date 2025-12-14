@@ -1,11 +1,12 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckSquare, Loader2 } from 'lucide-react';
-import { UserRole } from '../types';
+import { CheckSquare, Loader2, User, Lock } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [username, setUsername] = useState('admin'); // Default for easy testing
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const { login, loading } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
@@ -13,11 +14,17 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!username || !password) {
+      setError('Please enter both username and password');
+      return;
+    }
+
     try {
-      await login(username);
+      await login(username, password);
       navigate('/');
-    } catch (err) {
-      setError('Invalid credentials or user not found');
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials');
     }
   };
 
@@ -40,30 +47,43 @@ export const Login: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Username (Select Role)</label>
-            <select 
-              value={username} 
-              onChange={(e) => setUsername(e.target.value)}
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border"
-            >
-              <option value="admin">Admin (Alice)</option>
-              <option value="pm">Project Manager (Peter)</option>
-              <option value="lead">Team Lead (Larry)</option>
-              <option value="dev">Developer (Dave)</option>
-              <option value="tester">Tester (Tina)</option>
-            </select>
-            <p className="mt-1 text-xs text-gray-500">Simulating role-based login</p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <div className="relative rounded-md shadow-sm">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <User className="h-5 w-5 text-gray-400" aria-hidden="true" />
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="block w-full rounded-md border-gray-300 pl-10 focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2 border"
+                placeholder="e.g. admin, pm, dev"
+                required
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Valid users: admin, pm, lead, dev, tester
+            </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              value="password"
-              disabled
-              className="mt-1 block w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:outline-none sm:text-sm text-gray-500"
-            />
-             <p className="mt-1 text-xs text-gray-500">Any password works for this demo</p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <div className="relative rounded-md shadow-sm">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Lock className="h-5 w-5 text-gray-400" aria-hidden="true" />
+              </div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="block w-full rounded-md border-gray-300 pl-10 focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2 border"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Default password required
+            </p>
           </div>
 
           <button
