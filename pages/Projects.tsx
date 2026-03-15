@@ -2,18 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dbService } from '../services/dbService';
-import { geminiService } from '../services/geminiService';
+
 import { Project, UserRole, TaskStatus, TaskPriority } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { Plus, Calendar, Users, Sparkles, X, Loader2 } from 'lucide-react';
+import { Plus, Calendar, Users, X, Loader2 } from 'lucide-react';
 
 export const Projects: React.FC = () => {
   const { user } = useAuth();
   const { addNotification } = useNotification();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
 
   // Form State
@@ -63,62 +63,6 @@ export const Projects: React.FC = () => {
     } catch (e) {
       console.error("Failed to create project", e);
       addNotification("Error creating project", "error");
-    }
-  };
-
-  const handleAiGenerate = async () => {
-    if (!newProjectName || !newProjectDesc) return;
-    setIsGenerating(true);
-    addNotification("AI is generating your project plan...", "info", 3000);
-    
-    try {
-      const result = await geminiService.generateProjectPlan(newProjectName, newProjectDesc);
-      
-      if (!user) return;
-      
-      const projectId = crypto.randomUUID();
-      const newProject: Project = {
-        id: projectId,
-        name: newProjectName,
-        description: newProjectDesc, 
-        status: 'PLANNING',
-        startDate: newProjectStart || new Date().toISOString().split('T')[0],
-        endDate: newProjectEnd || new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
-        managerId: user.id,
-        teamIds: [],
-        documents: []
-      };
-
-      await dbService.addProject(newProject);
-
-      // Add generated tasks
-      if (result && result.tasks) {
-        const taskPromises = result.tasks.map((t: any) => {
-          return dbService.addTask({
-            id: crypto.randomUUID(),
-            projectId: projectId,
-            title: t.title,
-            description: t.description,
-            status: TaskStatus.TODO,
-            priority: t.priority === 'HIGH' ? TaskPriority.HIGH : TaskPriority.MEDIUM,
-            reporterId: user.id,
-            assigneeIds: [],
-            documents: []
-          });
-        });
-        await Promise.all(taskPromises);
-      }
-
-      await loadProjects();
-      setIsModalOpen(false);
-      resetForm();
-      addNotification("Project created with AI-generated tasks!", "success");
-
-    } catch (e) {
-      console.error(e);
-      addNotification("AI Generation failed, try manually.", "error");
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -241,20 +185,17 @@ export const Projects: React.FC = () => {
             <div className="p-6 bg-gray-50 flex flex-col sm:flex-row gap-3 justify-end">
               <button
                 type="button"
-                onClick={handleCreateProject}
-                disabled={isGenerating}
-                className="inline-flex justify-center rounded-md border border-transparent bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border-gray-300 shadow-sm"
+                onClick={() => setIsModalOpen(false)}
+                className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm"
               >
-                Create Manually
+                Cancel
               </button>
               <button
                 type="button"
-                onClick={handleAiGenerate}
-                disabled={isGenerating || !newProjectName || !newProjectDesc}
-                className="inline-flex items-center justify-center rounded-md border border-transparent bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-blue-700 shadow-sm disabled:opacity-50"
+                onClick={handleCreateProject}
+                className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 shadow-sm"
               >
-                {isGenerating ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                Generate Plan with AI
+                Create Project
               </button>
             </div>
           </div>

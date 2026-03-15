@@ -59,19 +59,35 @@ export const dbService = {
 
   // Authenticate user against database
   verifyUser: async (username: string, password: string): Promise<User | null> => {
+    console.log('🔍 Attempting to verify user:', { username, password });
+    
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('username', username)
       .single();
 
-    if (error || !data) return null;
+    console.log('📊 Database query result:', { data, error });
+
+    if (error || !data) {
+      console.log('❌ User not found or query error:', error);
+      return null;
+    }
 
     // Check password (In a real app, use bcrypt/argon2 hashing)
-    if (data.password === password) {
+    const passwordMatch = data.password === password;
+    console.log('🔒 Password comparison:', { 
+      dbPassword: data.password, 
+      inputPassword: password, 
+      match: passwordMatch 
+    });
+    
+    if (passwordMatch) {
+      console.log('✅ Authentication successful for user:', data.username);
       return mapUser(data);
     }
     
+    console.log('❌ Password mismatch');
     return null;
   },
 
